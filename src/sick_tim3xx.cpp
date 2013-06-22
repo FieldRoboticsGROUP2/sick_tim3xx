@@ -494,13 +494,18 @@ int SickTim3xx::loopOnce()
   unsigned char receiveBuffer[65536];
   unsigned char receiveBufferCopy[65536]; // only for debugging
   int actual_length = 0;
-  static const size_t NUM_FIELDS = 580;
+  static const size_t NUM_FIELDS = 124;
   char* fields[NUM_FIELDS];
   size_t count;
   static unsigned int iteration_count = 0;
 
   result = libusb_bulk_transfer(device_handle_, (1 | LIBUSB_ENDPOINT_IN), receiveBuffer, 65535, &actual_length,
                                 USB_TIMEOUT);
+//  std::string test = "sSN LMDscandata 1 0 0 0 0 0 6160 85EF0019 0 0 0 0 0 97 0 5DC 0 0 1 DIST1 3F800000 00000000 FFF92230 7530 5B 225 212 239 26E 2B0 37D 3EA 248 453 217 1E8 128 123 122 12B 183 1C0 1BA 1B7 1AF 0 4F6 55A 80C 848 8A1 8F9 0 0 0 0 E3F DC5 D54 0 0 0 0 0 0 0 0 280 1C9 1A3 194 19E 198 1B2 1C3 1B6 1CF 201 23A 2B7 2F3 2F8 66E 5C1 691 617 55C 5F1 5BC 58A 567 54A 455 458 4FF 4EF 4E2 0 1EC 0 0 0 0 0 D1 511 439 3B4 350 30C 2DB 297 262 242 21F 1FA 0 0 0 0 0 0";
+//  actual_length = test.size();
+//  memcpy(receiveBuffer, test.c_str(), test.size());
+//  ros::Duration(0.1).sleep();
+
   if (result != 0)
   {
     if (result == LIBUSB_ERROR_TIMEOUT)
@@ -583,13 +588,13 @@ int SickTim3xx::loopOnce()
 
   // 16: Scanning Frequency (5DC)
   unsigned short scanning_freq = -1;
-  sscanf(fields[16], "%hx", &scanning_freq);
+  sscanf(fields[17], "%hx", &scanning_freq);
   msg.scan_time = 1.0 / (scanning_freq / 100.0);
   // ROS_DEBUG("hex: %s, scanning_freq: %d, scan_time: %f", fields[16], scanning_freq, msg.scan_time);
 
   // 17: Measurement Frequency (36)
   unsigned short measurement_freq = -1;
-  sscanf(fields[17], "%hx", &measurement_freq);
+  measurement_freq = 36; // sscanf(fields[18], "%hx", &measurement_freq);
   msg.time_increment = 1.0 / (measurement_freq * 100.0);
   // ROS_DEBUG("measurement_freq: %d, time_increment: %f", measurement_freq, msg.time_increment);
 
@@ -608,15 +613,15 @@ int SickTim3xx::loopOnce()
   // 22: Scaling offset (00000000) -- always 0
   // 23: Starting angle (FFF92230)
   int starting_angle = -1;
-  sscanf(fields[23], "%x", &starting_angle);
+  sscanf(fields[24], "%x", &starting_angle);
   msg.angle_min = (starting_angle / 10000.0) / 180.0 * M_PI - M_PI / 2;
   // ROS_DEBUG("starting_angle: %d, angle_min: %f", starting_angle, msg.angle_min);
 
   // 24: Angular step width (2710)
   unsigned short angular_step_width = -1;
-  sscanf(fields[24], "%hx", &angular_step_width);
+  sscanf(fields[25], "%hx", &angular_step_width);
   msg.angle_increment = (angular_step_width / 10000.0) / 180.0 * M_PI;
-  msg.angle_max = msg.angle_min + 270.0 * msg.angle_increment;
+  msg.angle_max = msg.angle_min + 90.0 * msg.angle_increment;
 
   // adjust angle_min to min_ang config param
   int index_min = 0;
@@ -627,7 +632,7 @@ int SickTim3xx::loopOnce()
   }
 
   // adjust angle_max to max_ang config param
-  int index_max = 270;
+  int index_max = 90;
   while (msg.angle_max - msg.angle_increment > config_.max_ang)
   {
     msg.angle_max -= msg.angle_increment;
@@ -644,7 +649,7 @@ int SickTim3xx::loopOnce()
   for (int j = index_min; j <= index_max; ++j)
   {
     unsigned short range;
-    sscanf(fields[j + 26], "%hx", &range);
+    sscanf(fields[j + 27], "%hx", &range);
     msg.ranges[j - index_min] = range / 1000.0;
   }
 
@@ -656,16 +661,16 @@ int SickTim3xx::loopOnce()
   // 302: Angular step width (2710)
   // 303: Number of data (10F)
   // 304..574: Data_1 .. Data_n
-  if (config_.intensity)
-  {
-    msg.intensities.resize(index_max - index_min + 1);
-    for (int j = index_min; j <= index_max; ++j)
-    {
-      unsigned short intensity;
-      sscanf(fields[j + 304], "%hx", &intensity);
-      msg.intensities[j - index_min] = intensity;
-    }
-  }
+//  if (config_.intensity)
+//  {
+//    msg.intensities.resize(index_max - index_min + 1);
+//    for (int j = index_min; j <= index_max; ++j)
+//    {
+//      unsigned short intensity;
+//      sscanf(fields[j + 304], "%hx", &intensity);
+//      msg.intensities[j - index_min] = intensity;
+//    }
+//  }
 
   // 575: Position (0)
   // 576: Name (0)
@@ -678,8 +683,8 @@ int SickTim3xx::loopOnce()
   msg.range_max = 4.0;
 
   // ----- adjust start time
-  // - last scan point = now  ==>  first scan point = now - 271 * time increment
-  msg.header.stamp = start_time - ros::Duration().fromSec(271 * msg.time_increment);
+  // - last scan point = now  ==>  first scan point = now - 91 * time increment
+  msg.header.stamp = start_time - ros::Duration().fromSec(91 * msg.time_increment);
 
   // - shift forward to time of first published scan point
   msg.header.stamp += ros::Duration().fromSec((double)index_min * msg.time_increment);
